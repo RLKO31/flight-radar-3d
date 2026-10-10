@@ -914,6 +914,12 @@ input[type="range"]::-webkit-slider-thumb:hover {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+.status-badge.enroute {
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--color-cyan);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+}
+
 .status-badge.scheduled {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-secondary);

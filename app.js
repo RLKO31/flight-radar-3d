@@ -525,62 +525,15 @@ async function buildEarth() {
   atmosphereMesh = new THREE.Mesh(glowGeo, glowMat);
   scene.add(atmosphereMesh);
 
-  // Initialize Munich Airport Radar Group
+  // Initialize Airport Radar Group with concentric range rings scaled to currentRange
   radarGroup = new THREE.Group();
-  
-  // Concentric Radar Rings
-  const rings = [0.015, 0.04, 0.08, 0.14, 0.22];
-  rings.forEach((radius, index) => {
-    const ringGeo = new THREE.RingGeometry(radius - 0.001, radius + 0.001, 64);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x06b6d4,
-      transparent: true,
-      opacity: index === 0 ? 0.7 : 0.45 / index,
-      side: THREE.DoubleSide
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    radarGroup.add(ring);
-  });
+  scene.add(radarGroup);
+  rebuildRadarGroup(currentRange);
 
-  // EDDM Runways: Two parallel lines oriented 080° (80°/260°)
-  // EDDM runways are 4km long (approx 0.003 units)
-  const runwayGeo = new THREE.BufferGeometry();
-  const runwayVertices = new Float32Array([
-    // North Runway (08L/26R)
-    -0.012, 0.002, 0,
-     0.012, 0.002, 0,
-    // South Runway (08R/26L)
-    -0.012, -0.002, 0,
-     0.012, -0.002, 0
-  ]);
-  runwayGeo.setAttribute('position', new THREE.BufferAttribute(runwayVertices, 3));
-  const runwayMat = new THREE.LineBasicMaterial({
-    color: 0x06b6d4,
-    transparent: true,
-    opacity: 0.8,
-    linewidth: 1.5
-  });
-  const runways = new THREE.LineSegments(runwayGeo, runwayMat);
-  runways.rotateZ(80 * Math.PI / 180); // EDDM headings are 08/26
-  radarGroup.add(runways);
-
-  // Radar sweep line (cone sector)
-  const sweepGeo = new THREE.RingGeometry(0, 0.22, 32, 1, 0, Math.PI / 6); // 30 degree sector
-  const sweepMat = new THREE.MeshBasicMaterial({
-    color: 0x06b6d4,
-    transparent: true,
-    opacity: 0.15,
-    side: THREE.DoubleSide
-  });
-  const sweep = new THREE.Mesh(sweepGeo, sweepMat);
-  radarGroup.add(sweep);
-  radarGroup.userData = { sweep };
-
-  // Position and orient flat to the globe surface at Munich Airport
+  // Position and orient flat to the globe surface at active Airport
   radarGroup.position.copy(munichVector3);
   const upVector = munichVector3.clone().normalize();
   radarGroup.lookAt(munichVector3.clone().add(upVector));
-  scene.add(radarGroup);
 
   // Add a small pulsing light source above Munich
   const munichLight = new THREE.PointLight(0x06b6d4, 1.2, 1.5);
@@ -652,6 +605,73 @@ async function buildEarth() {
   orientOverlayMesh(detailMapOverlayHigh, munichVector3);
   detailMapOverlayHigh.scale.set(1, 1, 1);
   scene.add(detailMapOverlayHigh);
+}
+
+/**
+ * Dynamically rebuilds concentric radar range rings and sweep to match currentRange exactly.
+ */
+function rebuildRadarGroup(rangeKm) {
+  if (!radarGroup) return;
+
+  // Clear existing radar meshes and geometries
+  while (radarGroup.children.length > 0) {
+    const child = radarGroup.children[0];
+    radarGroup.remove(child);
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+      else child.material.dispose();
+    }
+  }
+
+  // Globe radius is 5.0 (Earth radius ~ 6371 km). Outer ring matches rangeKm exactly:
+  const maxWorldRadius = (rangeKm / 6371.0) * 5.0;
+  
+  // Concentric Radar Rings proportionally spaced
+  const fractions = [0.15, 0.35, 0.65, 1.0];
+  fractions.forEach((frac, index) => {
+    const radius = maxWorldRadius * frac;
+    const ringGeo = new THREE.RingGeometry(Math.max(0.001, radius - 0.0012), radius + 0.0012, 64);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x06b6d4,
+      transparent: true,
+      opacity: frac === 1.0 ? 0.75 : 0.35 / (index + 1),
+      side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    radarGroup.add(ring);
+  });
+
+  // Center airport runways representation: Two parallel lines oriented 080°
+  const runwayGeo = new THREE.BufferGeometry();
+  const runwayVertices = new Float32Array([
+    -0.008, 0.0015, 0,
+     0.008, 0.0015, 0,
+    -0.008, -0.0015, 0,
+     0.008, -0.0015, 0
+  ]);
+  runwayGeo.setAttribute('position', new THREE.BufferAttribute(runwayVertices, 3));
+  const runwayMat = new THREE.LineBasicMaterial({
+    color: 0x06b6d4,
+    transparent: true,
+    opacity: 0.85,
+    linewidth: 1.5
+  });
+  const runways = new THREE.LineSegments(runwayGeo, runwayMat);
+  runways.rotateZ(80 * Math.PI / 180);
+  radarGroup.add(runways);
+
+  // Radar sweep line (cone sector) matching exact outer radius
+  const sweepGeo = new THREE.RingGeometry(0, maxWorldRadius, 32, 1, 0, Math.PI / 6);
+  const sweepMat = new THREE.MeshBasicMaterial({
+    color: 0x06b6d4,
+    transparent: true,
+    opacity: 0.15,
+    side: THREE.DoubleSide
+  });
+  const sweep = new THREE.Mesh(sweepGeo, sweepMat);
+  radarGroup.add(sweep);
+  radarGroup.userData = { sweep };
 }
 
 // Orients a flat circle overlay tangent to the sphere with North pointing Up (+Y)
@@ -1041,23 +1061,26 @@ async function startSimulation(customMessage = null) {
     }
   }
 
-  // Filter reale Flüge um den aktiven Flughafen schnell in einem einzigen Durchlauf
+  // Filter reale Flüge um den aktiven Flughafen präzise nach dem ausgewählten Suchradius
   simulatedFlights = [];
-  const maxSearchRadius = Math.max(currentRange, 450);
-  const bbox = getBoundingBox(maxSearchRadius);
+  const bbox = getBoundingBox(currentRange);
 
   let filteredStates = cachedDummyData.states.filter(state => {
     const lon = state[5];
     const lat = state[6];
     if (lat === null || lon === null) return false;
-    return lat >= bbox.lamin && lat <= bbox.lamax && lon >= bbox.lomin && lon <= bbox.lomax;
+    // 1. Schneller Bounding-Box Vorabcheck
+    if (lat < bbox.lamin || lat > bbox.lamax || lon < bbox.lomin || lon > bbox.lomax) return false;
+    // 2. Exakter sphärischer Radius-Check (verhindert Verzerrung an den Box-Ecken)
+    const dist = getDistanceKm(lat, lon, activeAirport.lat, activeAirport.lon);
+    return dist <= currentRange;
   });
 
-  // Begrenzen auf max 35 Flüge für flüssige 60 FPS Performance
-  filteredStates = filteredStates.slice(0, 35);
+  // Begrenzen auf max 40 Flüge für flüssige 60 FPS Performance
+  filteredStates = filteredStates.slice(0, 40);
   
   if (filteredStates.length === 0) {
-    // Falls selbst im 2000km Radius keine Flüge vorliegen:
+    // Falls selbst im Radius keine Flüge vorliegen:
     generateProceduralFlights();
   } else {
     filteredStates.forEach(state => {
@@ -1087,7 +1110,7 @@ async function startSimulation(customMessage = null) {
         onGround
       });
     });
-    console.log(`${simulatedFlights.length} reale Flugdaten um ${activeAirport.name} simuliert.`);
+    console.log(`${simulatedFlights.length} reale Flugdaten innerhalb von ${currentRange} km um ${activeAirport.name} geladen.`);
   }
 
   feedSimulatedData();
@@ -1110,7 +1133,7 @@ function generateProceduralFlights() {
     const icao = 'sim' + Math.floor(100000 + Math.random() * 900000).toString(16);
     
     const angle = Math.random() * Math.PI * 2;
-    const distanceKm = 50 + Math.random() * 150;
+    const distanceKm = 30 + Math.random() * (currentRange * 0.85);
     
     const latOffset = (distanceKm * Math.cos(angle)) / 111.0;
     const lonOffset = (distanceKm * Math.sin(angle)) / (111.0 * Math.cos(activeAirport.lat * Math.PI / 180));
@@ -1165,8 +1188,8 @@ function updateSimulation() {
       flight.speed = Math.max(220, flight.speed - 30);
     }
     
-    // Wenn das Flugzeug den Bereich verlässt, setzen wir es auf den Ursprung zurück
-    const maxBound = Math.max(350, currentRange * 1.8);
+    // Wenn das Flugzeug den gewählten Radar-Suchbereich verlässt, setzen wir es zurück
+    const maxBound = currentRange * 1.12;
     if (distToAirport > maxBound) {
       respawnSimulatedFlight(flight);
     }
@@ -1615,11 +1638,18 @@ function resetPlaneHighlight(mesh) {
       const flightId = mesh.userData.id;
       const flight = flightsData.get(flightId);
       
-      if (flight && flight.onGround) {
-        color = 0xf59e0b; // Amber/Orange for ground planes
-      } else {
-        if (mesh.scale.x > 0.5) color = 0x06b6d4; // Heavy
-        if (mesh.scale.x < 0.3) color = 0x10b981; // Light
+      if (flight) {
+        if (flight.onGround) {
+          color = 0xf59e0b; // Amber/Orange für Bodenmaschinen
+        } else {
+          const route = getFlightRoute(flight);
+          if (route.isOverflight) {
+            color = 0x38bdf8; // Helleres Cyan für Überflüge / En-route
+          } else {
+            if (mesh.scale.x > 0.5) color = 0x06b6d4; // Heavy
+            else if (mesh.scale.x < 0.3) color = 0x10b981; // Light
+          }
+        }
       }
       
       child.material = new THREE.MeshStandardMaterial({
@@ -1666,6 +1696,43 @@ function updateApiIndicator(status) {
   }
 }
 
+/**
+ * Finds the best-matching airport along a given ray direction from a coordinate.
+ */
+function findAirportAlongRay(fromLat, fromLon, rayAngle, excludeCode, minKm = 150, maxKm = 3500) {
+  if (!allAirports || allAirports.length === 0) return null;
+  let bestScore = Infinity;
+  let bestAirport = null;
+
+  for (let i = 0; i < allAirports.length; i++) {
+    const a = allAirports[i];
+    if (a.code === excludeCode || a.iata === excludeCode) continue;
+    const d = getDistanceKm(fromLat, fromLon, a.lat, a.lon);
+    if (d < minKm || d > maxKm) continue;
+
+    const b = getBearing(fromLat, fromLon, a.lat, a.lon);
+    const angleDiff = Math.abs((b - rayAngle + 180) % 360 - 180);
+    if (angleDiff < 26) {
+      const score = angleDiff * 12 + Math.abs(d - 900) * 0.04;
+      if (score < bestScore) {
+        bestScore = score;
+        bestAirport = a;
+      }
+    }
+  }
+
+  return bestAirport;
+}
+
+function formatAirportLabel(airport, fallbackCountry, fallbackAngle) {
+  if (airport) {
+    const code = airport.iata || airport.code;
+    const city = airport.city || airport.name.split('(')[0].trim();
+    return code ? `${code} (${city})` : city;
+  }
+  return fallbackCountry ? `${fallbackCountry} (${getDirectionString(fallbackAngle)})` : getDirectionString(fallbackAngle);
+}
+
 function getFlightRoute(flight) {
   const currentAp = activeAirport || { code: 'EDDM', name: 'München (MUC)' };
   const currentCode = currentAp.iata || currentAp.code || 'MUC';
@@ -1675,55 +1742,49 @@ function getFlightRoute(flight) {
     return {
       origin: flight && flight.country ? flight.country : 'Startflughafen',
       destination: currentCode,
-      isArrival: true
+      isArrival: true,
+      isOverflight: false,
+      flightType: 'Anflug'
     };
   }
 
-  const bearing = getBearing(flight.lat, flight.lon, currentAp.lat, currentAp.lon);
-  const headingDiff = Math.abs((flight.heading - bearing + 180) % 360 - 180);
-  const isArrival = (headingDiff < 85) || flight.onGround;
+  const distToAp = getDistanceKm(flight.lat, flight.lon, currentAp.lat, currentAp.lon);
+  const bearingToAp = getBearing(flight.lat, flight.lon, currentAp.lat, currentAp.lon);
+  const headingDiff = Math.abs((flight.heading - bearingToAp + 180) % 360 - 180);
 
-  // Predict origin or destination airport from heading ray
-  let remoteAirport = null;
+  // Ein Flugzeug ist ein reiner Überflug (Transit / En-route), wenn es in Reiseflughöhe fliegt
+  // ODER wenn es nicht auf den Flughafen zufliegt und nicht am Boden ist
+  const isOverflight = !flight.onGround && (flight.altitude > 6200 || (distToAp > 45 && headingDiff > 50));
+
+  if (isOverflight) {
+    // Überflug: Weder Herkunft noch Ziel werden auf den aktiven Flughafen forciert!
+    const originRay = (flight.heading + 180) % 360;
+    const destRay = flight.heading;
+
+    const originAp = findAirportAlongRay(flight.lat, flight.lon, originRay, currentAp.code, 150, 4000);
+    const destAp = findAirportAlongRay(flight.lat, flight.lon, destRay, currentAp.code, 150, 4000);
+
+    return {
+      origin: formatAirportLabel(originAp, flight.country, originRay),
+      destination: formatAirportLabel(destAp, null, destRay),
+      isArrival: false,
+      isOverflight: true,
+      flightType: 'Überflug'
+    };
+  }
+
+  // Lokaler Flugbezug (Anflug oder Abflug)
+  const isArrival = (headingDiff < 75) || flight.onGround;
   const rayAngle = isArrival ? (flight.heading + 180) % 360 : flight.heading;
-
-  if (allAirports && allAirports.length > 0) {
-    let bestScore = Infinity;
-    // Search candidates within reasonable range (200 - 3000 km)
-    const candidates = allAirports.filter(a => {
-      if (a.code === currentAp.code || a.iata === currentAp.code) return false;
-      const d = getDistanceKm(currentAp.lat, currentAp.lon, a.lat, a.lon);
-      return d >= 200 && d <= 3500;
-    });
-
-    for (let i = 0; i < Math.min(candidates.length, 300); i++) {
-      const a = candidates[i];
-      const b = getBearing(currentAp.lat, currentAp.lon, a.lat, a.lon);
-      const angleDiff = Math.abs((b - rayAngle + 180) % 360 - 180);
-      if (angleDiff < 25) {
-        const d = getDistanceKm(currentAp.lat, currentAp.lon, a.lat, a.lon);
-        const score = angleDiff * 10 + Math.abs(d - 1000) * 0.05;
-        if (score < bestScore) {
-          bestScore = score;
-          remoteAirport = a;
-        }
-      }
-    }
-  }
-
-  let remoteLabel = "";
-  if (remoteAirport) {
-    const code = remoteAirport.iata || remoteAirport.code;
-    const city = remoteAirport.city || remoteAirport.name.split('(')[0].trim();
-    remoteLabel = code ? `${code} (${city})` : city;
-  } else {
-    remoteLabel = flight.country ? `${flight.country} (${getDirectionString(rayAngle)})` : getDirectionString(rayAngle);
-  }
+  const remoteAp = findAirportAlongRay(flight.lat, flight.lon, rayAngle, currentAp.code, 150, 3500);
+  const remoteLabel = formatAirportLabel(remoteAp, flight.country, rayAngle);
 
   return {
     origin: isArrival ? remoteLabel : `${currentCode} (${currentName})`,
     destination: isArrival ? `${currentCode} (${currentName})` : remoteLabel,
-    isArrival
+    isArrival,
+    isOverflight: false,
+    flightType: isArrival ? 'Anflug' : 'Abflug'
   };
 }
 
@@ -1731,12 +1792,24 @@ function updateHudDetails(flight) {
   document.getElementById('detail-callsign').textContent = flight.callsign;
   document.getElementById('detail-operator').textContent = getOperatorByCallsign(flight.callsign);
   
-  // Cleanly resolved route
+  // Cleanly resolved route & flight category
   const route = getFlightRoute(flight);
   const startSpan = document.getElementById('detail-route-start');
   const endSpan = document.getElementById('detail-route-end');
   if (startSpan) startSpan.textContent = route.origin;
   if (endSpan) endSpan.textContent = route.destination;
+
+  // Category badge
+  const categoryEl = document.getElementById('detail-category');
+  if (categoryEl) {
+    if (route.isOverflight) {
+      categoryEl.textContent = `Überflug (Transit) • ${flight.category}`;
+      categoryEl.style.borderColor = 'rgba(6, 182, 212, 0.6)';
+    } else {
+      categoryEl.textContent = flight.category;
+      categoryEl.style.borderColor = 'rgba(6, 182, 212, 0.3)';
+    }
+  }
 
   // Registration country & vertical rate
   const countryEl = document.getElementById('detail-country');
@@ -1753,7 +1826,6 @@ function updateHudDetails(flight) {
   document.getElementById('detail-speed').textContent = `${flight.speed} km/h`;
   document.getElementById('detail-heading').textContent = `${flight.heading}° (${getDirectionString(flight.heading)})`;
   document.getElementById('detail-icao').textContent = flight.id.toUpperCase();
-  document.getElementById('detail-category').textContent = flight.category;
 }
 
 function getOperatorByCallsign(callsign) {
@@ -2065,12 +2137,19 @@ function setupEventListeners() {
   rangeSlider.addEventListener('input', (e) => {
     currentRange = parseInt(e.target.value);
     rangeValue.textContent = `${currentRange} km`;
+    rebuildRadarGroup(currentRange);
   });
   
   // Range Slider finished sliding - immediately trigger new API fetch with new range
   rangeSlider.addEventListener('change', () => {
     clearInterval(apiTimer);
-    fetchLiveFlights();
+    rebuildRadarGroup(currentRange);
+    if (isSimulatedMode) {
+      isSimulatedMode = false;
+      startSimulation();
+    } else {
+      fetchLiveFlights();
+    }
     apiTimer = setInterval(fetchLiveFlights, UPDATE_INTERVAL);
   });
 
