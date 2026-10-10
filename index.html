@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Live Flight Tracker - München Airport Focus</title>
+  <!-- Google Fonts: Outfit for titles, Inter for details -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Global Error Catcher for loader screen -->
+  <script>
+    // Capturing phase handler to catch script/stylesheet loading errors
+    window.addEventListener('error', (event) => {
+      const errorDisplay = document.getElementById('error-display');
+      if (errorDisplay) {
+        errorDisplay.style.display = 'block';
+        if (event.target && (event.target.tagName === 'SCRIPT' || event.target.tagName === 'LINK')) {
+          const src = event.target.src || event.target.href || 'unknown source';
+          errorDisplay.innerHTML += `<div style="color: #f43f5e; margin-bottom: 5px;">
+            <i class="fa-solid fa-circle-xmark"></i> [Ladefehler] Datei konnte nicht geladen werden: <code>${src.split('/').pop()}</code>
+          </div>`;
+        } else {
+          const filename = event.filename ? event.filename.split('/').pop() : 'unknown';
+          errorDisplay.textContent += `[JS Fehler] ${event.message} bei ${filename}:${event.lineno}:${event.colno}\n`;
+        }
+      }
+    }, true);
+
+    window.addEventListener('unhandledrejection', (event) => {
+      const errorDisplay = document.getElementById('error-display');
+      if (errorDisplay) {
+        errorDisplay.style.display = 'block';
+        errorDisplay.textContent += `[Promise Rejection] ${event.reason}\n`;
+      }
+    });
+
+    // Check if the page is opened directly from filesystem (file:// protocol)
+    if (window.location.protocol === 'file:') {
+      window.addEventListener('DOMContentLoaded', () => {
+        const errorDisplay = document.getElementById('error-display');
+        if (errorDisplay) {
+          errorDisplay.style.display = 'block';
+          errorDisplay.innerHTML += `
+            <div style="color: #f59e0b; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid rgba(245, 158, 11, 0.3); padding-bottom: 5px;">
+              <i class="fa-solid fa-triangle-exclamation"></i> LOKALER PROTOKOLL-HINWEIS
+            </div>
+            Die Datei wurde direkt über <code>file://</code> geöffnet. 
+            ES6-JavaScript-Module (Three.js) erfordern aus Sicherheitsgründen einen Webserver (oder GitHub Pages).<br><br>
+            <strong>Lokal testen:</strong> Starten Sie z.B. <code>npx serve .</code> oder öffnen Sie das Projekt online auf GitHub Pages.
+          `;
+        }
+      });
+    }
+  </script>
+
+  <!-- 3D Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- Ambient Background Canvas (for smooth transitions/glows) -->
+  <div class="ambient-glow"></div>
+
+  <!-- Premium Loader Screen -->
+  <div id="loader-screen">
+    <div class="loader-content">
+      <div class="airplane-spinner">
+        <i class="fa-solid fa-plane"></i>
+      </div>
+      <h1 class="logo-text">FLIGHT<span>3D</span></h1>
+      <p id="loader-status" class="loader-status">Initialisiere 3D-Weltraumumgebung...</p>
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="load-progress"></div>
+      </div>
+      <p id="error-display" style="color: #f43f5e; margin-top: 15px; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; display: none; text-align: left; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; border: 1px solid rgba(244, 63, 94, 0.3); max-height: 150px; overflow-y: auto;"></p>
+    </div>
+  </div>
+
+  <!-- HUD Dashboard Overlay -->
+  <div id="hud-container">
+    
+    <!-- Top Bar: Logo & General Stats -->
+    <header class="hud-header glass">
+      <div class="header-logo">
+        <i class="fa-solid fa-plane-departure text-cyan"></i>
+        <h1>FLIGHT<span>3D</span></h1>
+      </div>
+      <div class="header-stats">
+        <div class="stat-item">
+          <span class="stat-label">Luftraum</span>
+          <span class="stat-value text-cyan" id="stat-region">München (EDDM)</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-label">Flugzeuge</span>
+          <span class="stat-value" id="stat-count">0</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-label">API Status</span>
+          <span class="stat-value text-green" id="api-status">
+            <span class="status-indicator"></span>Bereit
+          </span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Sidebar: Control Panel & Settings -->
+    <aside class="hud-sidebar glass">
+      <h2 class="panel-title"><i class="fa-solid fa-sliders-up"></i> Kontrollzentrum</h2>
+      
+      <!-- Focus Buttons -->
+      <div class="control-group">
+        <h3>Schnellfokus (Flughafen)</h3>
+        <div class="select-container" style="margin-bottom: 10px;">
+          <input type="text" id="airport-selector" list="airports-list" placeholder="Flughafen suchen (z.B. MUC, JFK)..." class="glass-select" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(15, 23, 42, 0.6); color: #fff; border: 1px solid rgba(6, 182, 212, 0.3); font-family: inherit; font-size: 0.85rem; outline: none; box-sizing: border-box;">
+          <datalist id="airports-list"></datalist>
+        </div>
+        <div class="btn-grid">
+          <button class="btn btn-primary" id="btn-focus-airport">
+            <i class="fa-solid fa-crosshairs"></i> Fokussieren
+          </button>
+          <button class="btn btn-secondary" id="btn-reset-earth">
+            <i class="fa-solid fa-earth-europe"></i> Globus-Ansicht
+          </button>
+        </div>
+      </div>
+
+      <!-- Map Layers / Visual Options -->
+      <div class="control-group">
+        <h3>Kartenoptionen</h3>
+        <label class="toggle-container">
+          <span class="toggle-label"><i class="fa-solid fa-cloud"></i> Wolkenschicht</span>
+          <input type="checkbox" id="toggle-clouds" checked>
+          <span class="toggle-slider"></span>
+        </label>
+        <label class="toggle-container">
+          <span class="toggle-label"><i class="fa-solid fa-route"></i> Flugpfade (Trails)</span>
+          <input type="checkbox" id="toggle-trails" checked>
+          <span class="toggle-slider"></span>
+        </label>
+        <label class="toggle-container" style="opacity: 0.6; cursor: not-allowed;" title="Deaktiviert, um geografische Koordinaten-Drift der Flugzeuge zu verhindern">
+          <span class="toggle-label"><i class="fa-solid fa-clock-rotate-left"></i> Auto-Rotation (Aus)</span>
+          <input type="checkbox" id="toggle-rotation" disabled>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <!-- Range / Bounding Box Slider -->
+      <div class="control-group">
+        <h3>Suchradius (km)</h3>
+        <div class="range-display">
+          <span id="range-value">250 km</span>
+        </div>
+        <input type="range" id="range-slider" min="100" max="600" step="50" value="250">
+      </div>
+
+      <!-- Quick Info / Help -->
+      <div class="info-footer">
+        <p><i class="fa-solid fa-circle-info"></i> Klicken Sie auf ein Flugzeug, um Flugdetails anzuzeigen. Scrollen zum Zoomen.</p>
+        <div style="margin-top: 12px; display: flex; gap: 8px;">
+          <button id="btn-open-legal" class="btn btn-secondary" style="font-size: 0.75rem; padding: 6px 10px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <i class="fa-solid fa-scale-balanced"></i> Impressum & Datenquellen
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bottom/Right Panel: Departures & Arrivals Board -->
+    <section class="hud-flight-board glass active" id="flight-board-panel">
+      <div class="panel-header" style="border-bottom: 1px solid var(--border-glass); padding-bottom: 12px;">
+        <h2 class="panel-title" style="border-bottom: none; padding-bottom: 0;"><i class="fa-solid fa-clock"></i> Starts & Landungen</h2>
+        <div class="board-tabs">
+          <button class="tab-btn active" id="btn-tab-arrivals">Ankünfte</button>
+          <button class="tab-btn" id="btn-tab-departures">Abflüge</button>
+        </div>
+      </div>
+      
+      <div class="board-container">
+        <!-- Arrivals Table -->
+        <div class="board-table active" id="board-arrivals">
+          <div class="board-row header">
+            <span class="col-time">Zeit</span>
+            <span class="col-flight">Flug</span>
+            <span class="col-origin">Herkunft</span>
+            <span class="col-status">Status</span>
+          </div>
+          <div class="board-body" id="arrivals-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Departures Table -->
+        <div class="board-table" id="board-departures">
+          <div class="board-row header">
+            <span class="col-time">Zeit</span>
+            <span class="col-flight">Flug</span>
+            <span class="col-dest">Ziel</span>
+            <span class="col-status">Status</span>
+          </div>
+          <div class="board-body" id="departures-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom/Right Panel: Selected Flight Details -->
+    <section class="hud-details-panel glass" id="details-panel">
+      <button class="close-btn" id="btn-close-details"><i class="fa-solid fa-xmark"></i></button>
+      
+      <div class="panel-header-badge">
+        <span class="badge" id="detail-category">Passagierflugzeug</span>
+      </div>
+
+      <div class="flight-headline">
+        <h2 id="detail-callsign">LH1234</h2>
+        <p id="detail-operator">Deutsche Lufthansa</p>
+      </div>
+
+      <div class="flight-route-visual">
+        <div class="route-point">
+          <i class="fa-solid fa-plane-departure"></i>
+          <span id="detail-route-start">MUC</span>
+        </div>
+        <div class="route-line">
+          <div class="route-line-progress"></div>
+          <i class="fa-solid fa-plane"></i>
+        </div>
+        <div class="route-point">
+          <i class="fa-solid fa-location-dot"></i>
+          <span id="detail-route-end">FRA</span>
+        </div>
+      </div>
+
+      <!-- Additional Flight Details Sub-line -->
+      <div style="font-size: 0.78rem; color: var(--text-secondary); margin: -8px 0 12px 0; display: flex; justify-content: space-between; padding: 6px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid var(--border-glass);">
+        <span><i class="fa-solid fa-flag" style="color: var(--color-cyan); margin-right: 4px;"></i> Registrierung: <strong id="detail-country" style="color: #fff;">Deutschland</strong></span>
+        <span><i class="fa-solid fa-arrows-up-down" style="color: var(--color-cyan); margin-right: 4px;"></i> Steigrate: <strong id="detail-vrate" style="color: #fff;">+0 m/s</strong></span>
+      </div>
+
+      <div class="details-grid">
+        <div class="detail-card">
+          <i class="fa-solid fa-up-right-from-square"></i>
+          <div class="card-content">
+            <span class="card-label">Flughöhe</span>
+            <span class="card-val" id="detail-altitude">10.668 m</span>
+          </div>
+        </div>
+        <div class="detail-card">
+          <i class="fa-solid fa-gauge"></i>
+          <div class="card-content">
+            <span class="card-label">Geschwindigkeit</span>
+            <span class="card-val" id="detail-speed">850 km/h</span>
+          </div>
+        </div>
+        <div class="detail-card">
+          <i class="fa-solid fa-compass"></i>
+          <div class="card-content">
+            <span class="card-label">Kurs (Heading)</span>
+            <span class="card-val" id="detail-heading">270° (West)</span>
+          </div>
+        </div>
+        <div class="detail-card">
+          <i class="fa-solid fa-fingerprint"></i>
+          <div class="card-content">
+            <span class="card-label">ICAO24 Adresse</span>
+            <span class="card-val" id="detail-icao">3c66a4</span>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="btn-track-flight">
+        <i class="fa-solid fa-video"></i> Flug verfolgen (Kamera-Fokus)
+      </button>
+    </section>
+
+  </div>
+
+  <!-- Legal & Data Sources Modal -->
+  <div id="legal-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card glass">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <i class="fa-solid fa-scale-balanced text-cyan" style="font-size: 1.3rem;"></i>
+          <h2 style="font-family: var(--font-title); font-size: 1.25rem;">Impressum & Datenquellen</h2>
+        </div>
+        <button class="modal-close" id="btn-close-legal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        
+        <section class="legal-section">
+          <h3><i class="fa-solid fa-circle-info text-cyan"></i> Angaben gemäß § 5 DDG & § 18 Abs. 2 MStV</h3>
+          <p><strong>Betreiber & Entwickler:</strong></p>
+          <p>
+            Portfolio-Projekt von RLKO31<br>
+            Student der Geodaten- & Geoinformatik-Anwendungen<br>
+            Kontakt: Über GitHub <a href="https://github.com/RLKO31" target="_blank" rel="noopener" style="color: var(--color-cyan);">github.com/RLKO31</a>
+          </p>
+          <p style="margin-top: 8px; font-size: 0.8rem; color: var(--text-secondary);">
+            Dieses Web-Projekt ist eine nicht-kommerzielle, akademische Demonstration und Teil eines Geodaten-Portfolios zur interaktiven 3D-Visualisierung von globalen Luftfahrtdaten und hochauflösenden Satellitenbildern.
+          </p>
+        </section>
+
+        <section class="legal-section">
+          <h3><i class="fa-solid fa-database text-cyan"></i> Datenquellen & Attributionen (Lizenzen)</h3>
+          <ul class="legal-list">
+            <li>
+              <strong>Flugverkehrsdaten (ADS-B):</strong>
+              Bereitgestellt durch <em>The OpenSky Network</em> (<a href="https://opensky-network.org" target="_blank" rel="noopener" style="color: var(--color-cyan);">opensky-network.org</a>). Die Nutzung erfolgt im Rahmen akademischer und nicht-kommerzieller Forschung. Zur Gewährleistung eines zuverlässigen Betriebs bei API-Ratenbegrenzungen (CORS / HTTP 429) ist eine ADS-B-Replay-Engine mit realen ADS-B-Datensätzen integriert.
+            </li>
+            <li>
+              <strong>Satellitenbilder (High-Resolution Zoom Tiles):</strong>
+              <em>Esri World Imagery</em> – Quellen: Esri, Maxar, Earthstar Geographics, CNES/Airbus DS, USDA FSA, USGS, Aerogrid, IGN, IGP und die GIS User Community.
+            </li>
+            <li>
+              <strong>Globus-Texturen & Topografie:</strong>
+              <em>NASA Earth Observatory (Blue Marble & GEBCO)</em> – Gemeinfrei (Public Domain nach US Copyright Law).
+            </li>
+            <li>
+              <strong>Globale Wolkendaten:</strong>
+              Echtzeit-Wolkenschicht aggregiert von <em>Matt Eason</em> auf Basis von EUMETSAT, NOAA und JMA Wettersatelliten (CC-BY).
+            </li>
+            <li>
+              <strong>Flughafendatenbank:</strong>
+              <em>OurAirports & OpenFlights</em> (Open Database License ODbL / CC0).
+            </li>
+          </ul>
+        </section>
+
+        <section class="legal-section">
+          <h3><i class="fa-solid fa-shield-halved text-cyan"></i> Datenschutz</h3>
+          <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5;">
+            Diese Website speichert keinerlei personenbezogene Daten, setzt keine Tracking-Cookies und verwendet keine Werbedienste. Beim Aufruf der Seite werden ausschließlich die technisch notwendigen Verbindungsdaten an GitHub Pages sowie die genannten CDN-/Kartenserver zur Übertragung von Kacheln und Texturen übermittelt.
+          </p>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- API Error Notification Toast -->
+  <div id="api-error-toast" class="glass">
+    <div class="toast-content">
+      <i class="fa-solid fa-triangle-exclamation text-rose"></i>
+      <div class="toast-text">
+        <h4>Verbindungsfehler (API)</h4>
+        <p id="api-error-details">Fehler beim Abrufen der Live-Daten.</p>
+      </div>
+    </div>
+    <button class="toast-close" id="btn-close-toast"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <!-- ES Module Import Map for local packages -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./three.module.js",
+        "three/addons/controls/OrbitControls.js": "./OrbitControls.js"
+      }
+    }
+  </script>
+
+  <!-- Main Application Script -->
+  <script type="module" src="app.js"></script>
+
+</body>
+</html>
