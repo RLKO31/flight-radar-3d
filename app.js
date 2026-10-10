@@ -112,7 +112,7 @@ function init() {
   flightsGroup = new THREE.Group();
   scene.add(flightsGroup);
 
-  // Load Airports Database in background
+  // Load Airports Database and ADS-B Replay Data in background concurrently
   fetch('./airports.json')
     .then(res => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -127,6 +127,17 @@ function init() {
       allAirports = AIRPORTS;
       populateAirportsDatalist();
     });
+
+  fetch('./json-flight-dummydaten.txt')
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then(data => {
+      cachedDummyData = data;
+      console.log(`Historische Flugdaten (${data.states ? data.states.length : 0} Flüge) vorab geladen.`);
+    })
+    .catch(err => console.warn('Preload Flugdaten fehlgeschlagen:', err));
 
   // 6. Build the universe
   buildStars();
@@ -971,14 +982,12 @@ function updateTrailPositions(trail, newPos) {
 // --- OPENSKY API SERVICE ---
 
 async function fetchLiveFlights() {
-  updateApiIndicator('loading');
-  const bbox = getBoundingBox(currentRange);
-  
-  // Wenn die Seite über einen lokalen Entwicklungsserver mit API-Proxy läuft, frage diesen an
   const isLocalServer = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const bbox = getBoundingBox(currentRange);
   const proxyUrl = `/api/flights?lamin=${bbox.lamin.toFixed(4)}&lomin=${bbox.lomin.toFixed(4)}&lamax=${bbox.lamax.toFixed(4)}&lomax=${bbox.lomax.toFixed(4)}`;
 
   if (isLocalServer) {
+    updateApiIndicator('loading');
     try {
       const response = await fetch(proxyUrl);
       if (response.ok) {
@@ -1000,9 +1009,8 @@ async function fetchLiveFlights() {
     }
   }
 
-  // Auf GitHub Pages / statischem Hosting:
-  // OpenSky Network blockiert Browser-CORS direkt von fremden Domains.
-  // Wir nutzen daher die integrierte ADS-B Replay-Engine mit 6.200 echten Flügen.
+  // Auf GitHub Pages / statischem Hosting oder bei Offline-Proxy:
+  // Schneller und zuverlässiger Start der Replay-Engine
   startSimulation();
 }
 
@@ -1011,16 +1019,11 @@ async function fetchLiveFlights() {
 async function startSimulation(customMessage = null) {
   if (isSimulatedMode) {
     updateSimulation();
+    updateApiIndicator('success');
     return;
   }
   isSimulatedMode = true;
-  
-  // Zeige im Status "ADS-B Replay (Aktiv)" in angenehmem Cyan / Grün
-  const apiStatus = document.getElementById('api-status');
-  if (apiStatus) {
-    apiStatus.className = 'stat-value text-cyan';
-    apiStatus.innerHTML = '<span class="status-indicator" style="background-color: var(--color-cyan);"></span>ADS-B Replay';
-  }
+  updateApiIndicator('loading');
 
   // Falls Dummy-Daten noch nicht geladen sind, lade sie
   if (!cachedDummyData) {
@@ -1038,23 +1041,19 @@ async function startSimulation(customMessage = null) {
     }
   }
 
-  // Filter reale Flüge um den aktiven Flughafen mit progressivem Radius-Fallback
+  // Filter reale Flüge um den aktiven Flughafen schnell in einem einzigen Durchlauf
   simulatedFlights = [];
-  let searchRadius = currentRange;
-  let filteredStates = [];
+  const maxSearchRadius = Math.max(currentRange, 450);
+  const bbox = getBoundingBox(maxSearchRadius);
 
-  while (filteredStates.length < 5 && searchRadius <= 2000) {
-    const bbox = getBoundingBox(searchRadius);
-    filteredStates = cachedDummyData.states.filter(state => {
-      const lon = state[5];
-      const lat = state[6];
-      if (lat === null || lon === null) return false;
-      return lat >= bbox.lamin && lat <= bbox.lamax && lon >= bbox.lomin && lon <= bbox.lomax;
-    });
-    searchRadius += 250; // Radius erweiteren, falls zu wenige Flüge gefunden wurden
-  }
+  let filteredStates = cachedDummyData.states.filter(state => {
+    const lon = state[5];
+    const lat = state[6];
+    if (lat === null || lon === null) return false;
+    return lat >= bbox.lamin && lat <= bbox.lamax && lon >= bbox.lomin && lon <= bbox.lomax;
+  });
 
-  // Begrenzen auf max 35 Flüge für Performance
+  // Begrenzen auf max 35 Flüge für flüssige 60 FPS Performance
   filteredStates = filteredStates.slice(0, 35);
   
   if (filteredStates.length === 0) {
@@ -1207,6 +1206,7 @@ function feedSimulatedData() {
   ]);
   
   processFlightStates(states);
+  updateApiIndicator('replay');
 }
 
 function getDistanceKm(lat1, lon1, lat2, lon2) {
@@ -1652,7 +1652,12 @@ function updateApiIndicator(status) {
       break;
     case 'success':
       apiStatus.classList.add('text-green');
-      apiStatus.innerHTML += 'Bereit';
+      apiStatus.innerHTML += 'Bereit (Live)';
+      break;
+    case 'replay':
+      apiStatus.classList.add('text-cyan');
+      indicator.style.backgroundColor = 'var(--color-cyan)';
+      apiStatus.innerHTML += 'Bereit (ADS-B)';
       break;
     case 'error':
       apiStatus.classList.add('text-rose');
