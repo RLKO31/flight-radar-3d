@@ -1,8 +1,14 @@
 # ✈️ 3D Flight Radar (Global & Munich Airport Focus)
 
+[![GitHub Pages](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-brightgreen?logo=github)](https://RLKO31.github.io/flight-radar-3d/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Three.js](https://img.shields.io/badge/3D-Three.js-000000?logo=three.js)](https://threejs.org/)
+
 Ein interaktiver 3D-Echtzeit- und ADS-B-Flugradar mit dynamischem Level of Detail (LOD), hochauflösenden Satellitenbildern, Flugverfolgung und Ankunfts-/Abflugtafel (FIDS).
 
-Entwickelt als interaktives Geodaten- und WebGL/Three.js-Portfolio-Projekt.
+Entwickelt als interaktives Geodaten- und WebGL/Three.js-Portfolio-Projekt an der Technischen Hochschule Würzburg-Schweinfurt (THWS).
+
+👉 **Live-Webseite:** [https://RLKO31.github.io/flight-radar-3d/](https://RLKO31.github.io/flight-radar-3d/)
 
 ---
 
