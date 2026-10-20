@@ -1,4 +1,4 @@
-# ✈️ 3D Flight Radar (Global & Munich Airport Focus)
+# 3D Flight Radar (Global & Munich Airport Focus)
 
 [![GitHub Pages](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-brightgreen?logo=github)](https://RLKO31.github.io/flight-radar-3d/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,11 +8,11 @@ Ein interaktiver 3D-Echtzeit- und ADS-B-Flugradar mit dynamischem Level of Detai
 
 Entwickelt als interaktives Geodaten- und WebGL/Three.js-Portfolio-Projekt an der Technischen Hochschule Würzburg-Schweinfurt (THWS).
 
-👉 **Live-Webseite:** [https://RLKO31.github.io/flight-radar-3d/](https://RLKO31.github.io/flight-radar-3d/)
+**Live-Webseite:** [https://RLKO31.github.io/flight-radar-3d/](https://RLKO31.github.io/flight-radar-3d/)
 
 ---
 
-## 🌟 Features
+## Features
 
 - **Interaktiver 3D-Globus (Three.js):**
   - Texturiert mit NASA Blue Marble, Ozean-Spiegelungen (Specular Mapping) und Relief-Topografie.
@@ -36,7 +36,7 @@ Entwickelt als interaktives Geodaten- und WebGL/Three.js-Portfolio-Projekt an de
 
 ---
 
-## ⚖️ Datenquellen, Lizenzen & Rechtliche Prüfung
+## Datenquellen, Lizenzen & Rechtliche Prüfung
 
 Alle in diesem Projekt genutzten Daten und Schnittstellen wurden rechtlich geprüft und sind für nicht-kommerzielle, akademische Portfolio- und Demonstrationszwecke freigegeben:
 
@@ -50,7 +50,7 @@ Alle in diesem Projekt genutzten Daten und Schnittstellen wurden rechtlich gepr�
 
 ---
 
-## 🚀 Lokale Nutzung
+## Lokale Nutzung
 
 Da moderne Browser aus Sicherheitsgründen die Ausführung von JavaScript-ES-Modulen über das lokale `file://`-Protokoll einschränken (CORS-Sicherheitsrichtlinie), empfiehlt sich ein lokaler HTTP-Server:
 
@@ -66,7 +66,7 @@ python -m http.server 8085
 
 ---
 
-## 🌐 GitHub Pages Deployment
+## GitHub Pages Deployment
 
 Das Repository ist mit GitHub Actions für automatische Bereitstellung auf GitHub Pages konfiguriert (`.github/workflows/deploy.yml`).
 
@@ -76,6 +76,6 @@ Das Repository ist mit GitHub Actions für automatische Bereitstellung auf GitHu
 
 ---
 
-## 📜 Lizenz
+## Lizenz
 
 Dieses Projekt ist unter der [MIT License](LICENSE) lizenziert.
